@@ -169,4 +169,6 @@ type AutoscalingOptions struct {
 	DaemonSetEvictionForOccupiedNodes bool
 	// User agent to use for HTTP calls.
 	UserAgent string
+	// A grace period before newly ready nodes are considered ready by the autoscaler.
+	NodeReadinessGracePeriod time.Duration
 }

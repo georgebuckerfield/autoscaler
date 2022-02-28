@@ -190,6 +190,7 @@ var (
 	emitPerNodeGroupMetrics  = flag.Bool("emit-per-nodegroup-metrics", false, "If true, emit per node group metrics.")
 	debuggingSnapshotEnabled = flag.Bool("debugging-snapshot-enabled", false, "Whether the debugging snapshot of cluster autoscaler feature is enabled")
 	nodeInfoCacheExpireTime  = flag.Duration("node-info-cache-expire-time", 87600*time.Hour, "Node Info cache expire time for each item. Default value is 10 years.")
+	nodeReadinessGracePeriod = flag.Duration("node-readiness-grace-period", 0*time.Second, "Specifies a grace period for new nodes before they are considered ready by cluster autoscaler.")
 )
 
 func createAutoscalingOptions() config.AutoscalingOptions {
@@ -269,6 +270,7 @@ func createAutoscalingOptions() config.AutoscalingOptions {
 		DaemonSetEvictionForEmptyNodes:     *daemonSetEvictionForEmptyNodes,
 		DaemonSetEvictionForOccupiedNodes:  *daemonSetEvictionForOccupiedNodes,
 		UserAgent:                          *userAgent,
+		NodeReadinessGracePeriod:           *nodeReadinessGracePeriod,
 	}
 }
 

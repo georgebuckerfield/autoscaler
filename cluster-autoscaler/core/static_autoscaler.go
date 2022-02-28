@@ -41,6 +41,7 @@ import (
 	"k8s.io/autoscaler/cluster-autoscaler/utils/backoff"
 	"k8s.io/autoscaler/cluster-autoscaler/utils/deletetaint"
 	"k8s.io/autoscaler/cluster-autoscaler/utils/errors"
+	kube_utils "k8s.io/autoscaler/cluster-autoscaler/utils/kubernetes"
 	scheduler_utils "k8s.io/autoscaler/cluster-autoscaler/utils/scheduler"
 	"k8s.io/autoscaler/cluster-autoscaler/utils/taints"
 	"k8s.io/autoscaler/cluster-autoscaler/utils/tpu"
@@ -758,7 +759,41 @@ func (a *StaticAutoscaler) obtainNodeLists(cp cloudprovider.CloudProvider) ([]*a
 	// TODO: Remove this call when we handle dynamically provisioned resources.
 	allNodes, readyNodes = a.processors.CustomResourcesProcessor.FilterOutNodesWithUnreadyResources(a.AutoscalingContext, allNodes, readyNodes)
 	allNodes, readyNodes = taints.FilterOutNodesWithIgnoredTaints(a.ignoredTaints, allNodes, readyNodes)
+	if a.AutoscalingContext.AutoscalingOptions.NodeReadinessGracePeriod > 0*time.Second {
+		allNodes, readyNodes = a.removeWaitingNodes(a.AutoscalingContext, allNodes, readyNodes)
+	}
 	return allNodes, readyNodes, nil
+}
+
+func (a *StaticAutoscaler) removeWaitingNodes(ctx *context.AutoscalingContext, allNodes, readyNodes []*apiv1.Node) ([]*apiv1.Node, []*apiv1.Node) {
+	delay := ctx.AutoscalingOptions.NodeReadinessGracePeriod
+
+	newAllNodes := make([]*apiv1.Node, 0)
+	newReadyNodes := make([]*apiv1.Node, 0)
+	nodesWaitingForDelay := make(map[string]*apiv1.Node)
+
+	for _, node := range readyNodes {
+		_, transitionTime, _ := kube_utils.GetReadinessState(node)
+		klog.Infof("node %s transitioned to ready at %s", node.Name, transitionTime)
+
+		readyTime := time.Now().Sub(transitionTime)
+		if readyTime < delay {
+			klog.Infof("node %s is ready for %s, which is less than than the grace period of %s, consider it unready", node.Name, readyTime, delay)
+			nodesWaitingForDelay[node.Name] = kube_utils.GetUnreadyNodeCopy(node)
+		} else {
+			newReadyNodes = append(newReadyNodes, node)
+		}
+	}
+
+	for _, node := range allNodes {
+		if newNode, found := nodesWaitingForDelay[node.Name]; found {
+			newAllNodes = append(newAllNodes, newNode)
+		} else {
+			newAllNodes = append(newAllNodes, node)
+		}
+	}
+
+	return newAllNodes, newReadyNodes
 }
 
 func (a *StaticAutoscaler) updateClusterState(allNodes []*apiv1.Node, nodeInfosForGroups map[string]*schedulerframework.NodeInfo, currentTime time.Time) errors.AutoscalerError {
